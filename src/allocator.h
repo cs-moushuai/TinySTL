@@ -5,9 +5,10 @@
     Description：用于给容器申请空间
 */
 
-#include <new>
-#include <cstddef>
-#include <iostream>
+#include <cstddef> // UINT_MAX
+#include <iostream> // cerr
+
+#include "construct.h"
 
 namespace tinystl {
 
@@ -33,19 +34,6 @@ inline void _deallocate(T* buffer) {
     ::operator delete(buffer);
 }
 
-template <typename T1, typename T2>
-inline void _construct(T1* p, const T2& value) {
-    // placement new 相关 https://www.cnblogs.com/luxiaoxun/archive/2012/08/10/2631812.html
-    // 通过查询了解到这个操作叫做placement new，就是在指针p所指向的内存空间创建一个T1类型的对象，但是对象的内容是从T2类型的对象转换过来的（调用了T1的构造函数，T1::T1(value)）。
-    // 就是在已有空间的基础上重新调整分配的空间，类似于realloc函数。这个操作就是把已有的空间当成一个缓冲区来使用，这样子就减少了分配空间所耗费的时间，因为直接用new操作符分配内存的话，在堆中查找足够大的剩余空间速度是比较慢的。
-    new(p) T1(value);
-}
-
-template <typename T>
-inline void _destroy(T* ptr) {
-    ptr->~T();
-}
-
 template <typename T>
 class allocator {
 public:
@@ -55,23 +43,48 @@ public:
     using reference         = T&;
     using const_reference   = const T&;
     using size_type         = size_t;
+    // difference_type是一种常用的迭代器型别，用来表示两个迭代器之间的距离
     using difference_type   = ptrdiff_t;
 
     // static 使得不需要实例化类就可以调用，内部只写调用是防止模板导致的代码膨胀
+    static pointer allocate() {
+        return _allocate(static_cast<difference_type>(1), static_cast<pointer>(nullptr));
+    }
+
     static pointer allocate(size_type n) {
         return _allocate(static_cast<difference_type>(n), static_cast<pointer>(nullptr));
     }
 
-    static void deallocate(pointer p, size_type n) {
+    static void deallocate(pointer p) {
+        _deallocate(p);
+    }
+    static void deallocate(pointer p, size_type) {
         _deallocate(p);
     }
 
+    static void construct(pointer p) {
+        tinystl::construct(p);
+    }
+
     static void construct(pointer p, const_reference value) {
-        _construct(p, value);
+        tinystl::construct(p, value);
+    }
+
+    static void construct(pointer p, T&& value) {
+        tinystl::construct(p, std::move(value));
+    }
+
+    template <class... Args>
+    static void construct(T* p, Args&& ...args) {
+        tinystl::construct(p, std::forward<Args>(args)...);
     }
 
     static void destroy(pointer p) {
-        _destroy(p);
+        tinystl::destroy(p);
+    }
+
+    static void destroy(pointer first, pointer last) {
+        tinystl::destroy(first, last);
     }
 
     pointer address(reference x) const {
